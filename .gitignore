@@ -1,0 +1,33 @@
+# Build
+build/
+cmake-build-*/
+bin/
+lib/
+*.obj
+*.o
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+*.exe
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# CUDA
+*.ptx
+*.cubin
+
+# Logs
+*.log
+
+# Data
+data/
+*.ply
+*.splat
