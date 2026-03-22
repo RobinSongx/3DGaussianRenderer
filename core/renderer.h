@@ -18,11 +18,11 @@ public:
 
 private:
     // TODO: add device buffers
-    DeviceBuffer<float4> positions_;
-    DeviceBuffer<float4> scale_rotation_;
-    DeviceBuffer<float4> colors_;
-    DeviceBuffer<float4> conics_;
-    DeviceBuffer<float4> screen_ellipses_;
+    // DeviceBuffer<float4> positions_;
+    // DeviceBuffer<float4> scale_rotation_;
+    // DeviceBuffer<float4> colors_;
+    // DeviceBuffer<float4> conics_;
+    // DeviceBuffer<float4> screen_ellipses_;
 };
 
 } // namespace gauss_render

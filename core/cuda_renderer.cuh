@@ -44,6 +44,7 @@ void SortTileList(CudaTimer& timer, int tile_list_size,
                   void*& temp_storage, size_t& temp_storage_size);
 void EvaluateTileRange(CudaTimer& timer, int tile_list_size);
 void RasterizeTile(CudaTimer& timer);
+void ClearScreen(uchar4* buffer, int width, int height);
 
 } // namespace gauss_render
 

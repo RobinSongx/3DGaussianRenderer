@@ -49,8 +49,8 @@ int main(int argc, char* argv[]) {
         controller.SetBounds(model.GetBoundsMin(), model.GetBoundsMax());
         renderer.UploadModel(model);
     } else {
-        std::cerr << "Usage: " << argv[0] << " <input.ply>" << std::endl;
-        return 1;
+        std::cout << "No PLY file provided, running in test mode (solid color)" << std::endl;
+        // 测试模式下不需要模型数据
     }
 
     window.SetMouseMoveCallback([&controller](float dx, float dy) {
@@ -65,7 +65,7 @@ int main(int argc, char* argv[]) {
     long frame_count = 0;
     double fps = 0.0;
     double last_fps_update = last_time;
-    int num_gaussians_total = model.num_gaussians;
+    int num_gaussians_total = (argc > 1) ? model.num_gaussians : 0;
 
     while (!window.ShouldClose()) {
         double current_time = glfwGetTime();
@@ -83,12 +83,28 @@ int main(int argc, char* argv[]) {
 
         uchar4* color_ptr = nullptr;
         size_t byte_size;
-        cudaGraphicsMapResources(1, &cuda_resource, nullptr);
-        cudaGraphicsResourceGetMappedPointer(
+        cudaError_t err;
+        err = cudaGraphicsMapResources(1, &cuda_resource, nullptr);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "cudaGraphicsMapResources failed: %s\n", cudaGetErrorString(err));
+        }
+        err = cudaGraphicsResourceGetMappedPointer(
             reinterpret_cast<void**>(&color_ptr), &byte_size, cuda_resource);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "cudaGraphicsResourceGetMappedPointer failed: %s\n", cudaGetErrorString(err));
+        }
+        // 清空之前的错误状态
+        cudaGetLastError();
+        
+        printf("Frame %d: color_ptr = %p, byte_size = %zu\n", frame_count, (void*)color_ptr, byte_size);
 
-        RenderStats frame_stats;
-        renderer.Render(camera, reinterpret_cast<uint8_t*>(color_ptr), frame_stats);
+         RenderStats frame_stats;
+         renderer.Render(camera, reinterpret_cast<uint8_t*>(color_ptr), frame_stats);
+
+         err = cudaGetLastError();
+         if (err != cudaSuccess) {
+             fprintf(stderr, "CUDA error after Render: %s\n", cudaGetErrorString(err));
+         }
 
         stats.sh_eval_ms += frame_stats.sh_eval_ms;
         stats.project_ms += frame_stats.project_ms;
@@ -97,15 +113,10 @@ int main(int argc, char* argv[]) {
         stats.raster_ms += frame_stats.raster_ms;
         stats.total_ms += frame_stats.total_ms;
 
-        DrawPerformanceOverlay(
-            reinterpret_cast<uint8_t*>(color_ptr),
-            width,
-            height,
-            num_gaussians_total,
-            frame_stats,
-            fps);
-
-        cudaGraphicsUnmapResources(1, &cuda_resource, nullptr);
+        err = cudaGraphicsUnmapResources(1, &cuda_resource, nullptr);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "cudaGraphicsUnmapResources failed: %s\n", cudaGetErrorString(err));
+        }
 
         display.Render();
 

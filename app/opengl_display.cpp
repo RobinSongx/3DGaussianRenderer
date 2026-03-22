@@ -28,9 +28,9 @@ const char* kFragmentShaderText = STRINGIFY(
         color = texture(textureSampler, uv).rgba;\n    }\n
 );
 
-constexpr uint32_t kQuadIndices[] = {0, 1, 2, 2, 3, 0};
 constexpr glm::vec3 kQuadVertices[] = {{-1, -1, 0}, {1, -1, 0}, {1, 1, 0}, {-1, 1, 0}};
 constexpr glm::vec2 kQuadUvs[] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+constexpr uint32_t kQuadIndices[] = {0, 1, 2, 2, 3, 0};
 
 } // namespace
 
@@ -88,11 +88,14 @@ GLuint OpenglDisplay::CompileShader(const char* vertex_source, const char* fragm
     glLinkProgram(program);
 
     glGetProgramiv(program, GL_LINK_STATUS, &result);
+    if (!result) {
+        fprintf(stderr, "Shader link failed!\n");
+    }
     glGetProgramiv(program, GL_INFO_LOG_LENGTH, &info_length);
     if (info_length > 0) {
         std::vector<char> error_msg(info_length + 1);
         glGetProgramInfoLog(program, info_length, nullptr, error_msg.data());
-        fprintf(stderr, "%s\n", error_msg.data());
+        fprintf(stderr, "Link log: %s\n", error_msg.data());
     }
 
     glDetachShader(program, vertex_id);
@@ -104,35 +107,35 @@ GLuint OpenglDisplay::CompileShader(const char* vertex_source, const char* fragm
 }
 
 void OpenglDisplay::CreateQuad() {
+    GLenum err;
     glGenVertexArrays(1, &vertex_array_);
     glBindVertexArray(vertex_array_);
 
     glGenBuffers(1, &vertex_buffer_);
     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_);
     glBufferData(GL_ARRAY_BUFFER, sizeof(kQuadVertices), kQuadVertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
 
     glGenBuffers(1, &uv_buffer_);
     glBindBuffer(GL_ARRAY_BUFFER, uv_buffer_);
     glBufferData(GL_ARRAY_BUFFER, sizeof(kQuadUvs), kQuadUvs, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
 
     glGenBuffers(1, &index_buffer_);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer_);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(kQuadIndices), kQuadIndices, GL_STATIC_DRAW);
 
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
-
     glBindVertexArray(0);
 }
 
 void OpenglDisplay::Render() {
+    glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     glDisable(GL_DEPTH_TEST);
 
     glUseProgram(shader_program_);
-    glEnable(GL_TEXTURE_2D);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -149,8 +152,6 @@ void OpenglDisplay::Render() {
     glBindVertexArray(vertex_array_);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer_);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
-
-    glDisable(GL_TEXTURE_2D);
 }
 
 } // namespace gauss_render
