@@ -13,37 +13,76 @@ struct CameraData {
     float aspect;
     glm::mat4 projection;
     glm::mat4 view;
-    glm::mat4 view_projection;
-    glm::vec2 fov_cotangent;
-    glm::vec2 depth_scale_bias;
+    glm::mat4 viewProjection;
+    glm::vec2 fovCotangent;
+    glm::vec2 depthScaleBias;
+};
+
+template <typename T>
+struct DoubleBuffer {
+  private:
+    T* m_Buffers[2];
+    int m_Selector;
+
+  public:
+    DoubleBuffer(T* current, T* alternate) {
+        m_Selector = 0;
+        m_Buffers[0] = current;
+        m_Buffers[1] = alternate;
+    }
+
+    T* current() const {
+        return m_Buffers[m_Selector];
+    }
+
+    T* alternate() const {
+        return m_Buffers[m_Selector ^ 1];
+    }
+
+    int selector() const {
+        return m_Selector;
+    }
 };
 
 struct GlobalArgs {
-    int splat_count;
-    int sh_degree;
-    int sh_count;
-    float4* positions;
-    float4* scale_rotation;
-    float4* colors;
-    float4* conics;
-    float4* screen_ellipses;
-    float2* position_xy_clip;
-    float* position_z_clip;
-    float* spherical_harmonics;
-    int2* tile_range;
-    uchar4* back_buffer;
-    CameraData camera_data;
+    int32_t splatCount;
+    int sphericalHarmonicsDegree;
+    int sphericalHarmonicsCount;
+    float4* position;
+    float4* scaleAndRotation;
+    float4* color;
+    float4* conic;
+    float4* screenEllipse;
+    float2* positionClipSpaceXY;
+    float* positionClipSpaceZ;
+    float* sphericalHarmonics;
+    int32_t* tileRange;
+    uchar4* backBuffer;
+    CameraData cameraData;
 };
 
-void SetGlobalArgs(GlobalArgs* args);
+struct TileListArgs {
+    uint64_t* keys;
+    int32_t* values;
+    int32_t size;
+    int32_t capacity;
+};
 
-void EvaluateSphericalHarmonics(CudaTimer& timer, int splat_count);
-void EvaluateSplatClipData(CudaTimer& timer, int splat_count);
-int BuildTileList(CudaTimer& timer, int grid_size, int tile_list_capacity);
-void SortTileList(CudaTimer& timer, int tile_list_size,
-                  void*& temp_storage, size_t& temp_storage_size);
-void EvaluateTileRange(CudaTimer& timer, int tile_list_size);
-void RasterizeTile(CudaTimer& timer);
+void setGlobalArgs(GlobalArgs* globalArgs);
+void setTileListArgs(TileListArgs* tileListArgs);
+
+void evaluateSphericalHarmonics(CudaTimer& timer, int32_t count);
+void evaluateSplatClipData(CudaTimer& timer, int32_t count);
+int32_t buildTileList(CudaTimer& timer, int32_t numBlocks, int32_t tileListCapacity);
+void sortTileList(CudaTimer& timer,
+                  int32_t tileListSize,
+                  void*& deviceTempStorage,
+                  size_t& tempStorageSizeInBytes,
+                  DoubleBuffer<uint64_t>& keys,
+                  DoubleBuffer<int32_t>& values);
+void evaluateTileRange(CudaTimer& timer, int32_t tileListSize);
+void rasterizeTile(CudaTimer& timer);
+
 void ClearScreen(uchar4* buffer, int width, int height);
 
 } // namespace gauss_render

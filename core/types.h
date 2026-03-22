@@ -7,9 +7,12 @@
 namespace gauss_render {
 
 constexpr int kTileSize = 16;
+constexpr int kScreenSize = 1024;
 constexpr int kDefaultScreenWidth = 1024;
 constexpr int kDefaultScreenHeight = 1024;
 constexpr int kDefaultShBlockSize = 256;
+constexpr int kTilesPerScreen = kScreenSize / kTileSize;
+constexpr int kTotalTiles = kTilesPerScreen * kTilesPerScreen;
 
 struct RenderStats {
     double sh_eval_ms = 0.0;

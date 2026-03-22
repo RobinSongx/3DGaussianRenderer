@@ -25,7 +25,7 @@
 ├─ 数据加载: 解析PLY文件，读取高斯参数
 ├─ 数据预处理: 重排列球谐函数 → 上传到GPU显存
 └─ 主循环: 处理输入 → 更新相机 → 触发CUDA渲染 → 显示结果
-         ↓
+        ↓
 GPU端 (CUDA) - 每一帧执行以下阶段:
 ├─ 1. evaluateSphericalHarmonics  - 计算视角依赖的RGB颜色
 ├─ 2. evaluateSplatClipData       - 投影高斯到屏幕，计算椭圆参数
@@ -33,7 +33,7 @@ GPU端 (CUDA) - 每一帧执行以下阶段:
 ├─ 4. sortTileList                - 按tile索引和深度排序
 ├─ 5. evaluateTileRange           - 计算每个tile在排序后数组中的范围
 └─ 6. rasterizeTile               - 分块光栅化，alpha混合输出图像
-         ↓
+        ↓
 结果通过CUDA-OpenGL互操作显示在窗口中
 ```
 
@@ -52,33 +52,49 @@ GPU端 (CUDA) - 每一帧执行以下阶段:
 ├── design.md                   # 本设计文档
 │
 ├── core/                       # 核心渲染算法（独立文件夹）
-│   ├── types.h                 # 基础类型，常量定义
+│   ├── consts.h                # 常量定义（屏幕大小，tile大小等）
+│   ├── types.h                 # 基础类型定义
 │   ├── camera.h                # 相机参数结构
-│   ├── camera.cc               # 相机参数计算
-│   ├── gaussian_model.h        # 高斯模型数据结构
-│   ├── gaussian_model.cc       # 数据预处理（SH重排，量化）
-│   ├── ply_loader.h            # PLY文件加载器
-│   ├── ply_loader.cc           # PLY加载实现
-│   ├── device_buffer.h         # CUDA设备内存RAII封装
-│   ├── cuda_utils.h            # CUDA错误检查，计时器
+│   ├── camera.cpp              # 相机参数计算
+│   ├── camera_controls.h       # 相机交互控制（处理用户输入）
+│   ├── camera_controls.cpp     # 交互实现
+│   ├── gaussian_model.h         # 高斯模型数据结构
+│   ├── gaussian_model.cpp       # 数据预处理（SH重排，量化）
+│   ├── device_buffer.h          # CUDA设备内存RAII封装（模板声明）
+│   ├── device_buffer.cu         # CUDA设备内存RAII封装（模板实现）
+│   ├── cuda_error_check.h       # CUDA错误检查宏定义
+│   ├── cuda_error_check.cpp     # CUDA错误检查实现
+│   ├── cuda_utils.h             # CUDA工具类（计时器）
+│   ├── utilities.h              # OpenGL/CUDA互操作工具类
+│   ├── ply_parser.h             # PLY文件加载器
+│   ├── ply_parser.cpp           # PLY加载实现
+│   ├── ply_loader.h             # PLY加载器（适配层）
+│   ├── ply_loader.cpp           # PLY加载实现
 │   ├── renderer.h              # 渲染器接口
-│   ├── cuda_renderer.cuh       # CUDA核函数声明，数据结构
-│   └── cuda_renderer.cu        # 所有CUDA渲染流水线
+│   ├── renderer.cpp             # 渲染器实现
+│   ├── gaussian_render.cuh      # CUDA核函数声明，数据结构
+│   └── gaussian_render.cu       # 所有CUDA渲染流水线
+│   ├── cuda_renderer.cuh        # CUDA渲染器接口（遗留，待整理）
+│   └── cuda_renderer.cu         # CUDA渲染器实现（遗留，待整理）
 │
 ├── app/                        # 前端应用（GLFW + OpenGL桌面）
-│   ├── main.cc                 # 主程序入口
-│   ├── camera_controller.h     # 相机交互控制（处理用户输入）
-│   ├── camera_controller.cc    # 交互实现
+│   ├── main.cpp                 # 主程序入口
+│   ├── camera_controller.h     # 相机交互控制器
+│   ├── camera_controller.cpp    # 控制器实现
 │   ├── glfw_window.h           # GLFW窗口封装
-│   └── opengl_display.h        # OpenGL显示输出
+│   ├── glfw_window.cpp         # 窗口实现
+│   ├── opengl_display.h        # OpenGL显示输出
+│   ├── opengl_display.cpp      # 显示实现
+│   ├── perf_overlay.h          # 性能 overlay 显示
+│   └── perf_overlay.cpp        # 性能 overlay 实现
 │
 ├── external/                   # 第三方依赖
 │   ├── glm/                    # 数学库（header-only）
-│   ├── GLFW/                   # 窗口管理
-│   ├── GLEW/                   # OpenGL扩展加载
-│   └── cub                     # NVIDIA CUB库（排序）
+│   ├── glfw/                   # 窗口管理
+│   └── glew/                   # OpenGL扩展加载
 │
-└── doc/                        # 文档
+└── data/                        # 测试数据
+    └── random_cube.ply         # 随机立方体测试数据
 ```
 
 ### 模块职责分离
@@ -180,7 +196,7 @@ struct RenderStats {
 ### CPU端数据结构（Core层，平台无关）
 
 ```cpp
-// include/core/gaussian_model.h
+// core/gaussian_model.h
 namespace gauss_render {
 
 // 单个高斯参数（CPU内存）
@@ -219,7 +235,7 @@ private:
 ### 相机参数结构
 
 ```cpp
-// include/core/camera.h
+// core/camera.h
 namespace gauss_render {
 
 // 相机参数（纯数据，平台无关）
@@ -277,31 +293,6 @@ private:
     float far_ = 100.0f;
     int width_ = 1024;
     int height_ = 1024;
-};
-
-// 相机控制器（处理用户输入更新相机）
-class CameraController {
-public:
-    CameraController(Camera* camera);
-
-    // 处理输入事件，更新相机
-    void Update(float delta_time);
-
-    // 绑定鼠标移动回调
-    void OnMouseMove(float dx, float dy);
-
-    // 绑定滚轮回调
-    void OnScroll(float dy);
-
-    // 设置场景包围盒
-    void SetBounds(const glm::vec3& min_bounds, const glm::vec3& max_bounds);
-
-private:
-    Camera* camera_;
-    float yaw_ = 0.0f;
-    float pitch_ = 0.0f;
-    float distance_ = 2.0f;
-    glm::vec3 center_;
 };
 
 } // namespace gauss_render
@@ -531,7 +522,7 @@ output[pixel] = color * 255.0f;
   - 局部变量: 小驼峰 `tileIndex`
   - 成员变量: 下划线后缀 `tile_range_`
   - 常量: k前缀 `kTileSize`
-- 头文件保护: `#ifndef PROJECT_NAME_HEADER_H_`
+- 头文件保护: `#pragma once`
 - 包含顺序: C/C++标准库 → 第三方 → 本项目内部
 
 ---
@@ -552,38 +543,48 @@ output[pixel] = color * 255.0f;
 ## 功能清单
 
 - [x] 设计文档
-- [ ] 创建目录结构
-- [ ] 添加.clang-format（Google风格）
-- [ ] 添加.gitignore
-- [ ] CMake构建配置
-- [ ] **core/ 核心算法**
-  - [ ] types.h - 基础类型和常量定义
-  - [ ] camera.h - 相机参数结构
-  - [ ] camera.cc - 相机参数计算
-  - [ ] gaussian_model.h - 高斯模型数据结构
-  - [ ] gaussian_model.cc - 数据预处理（SH重排，量化）
-  - [ ] ply_loader.h - PLY文件加载器
-  - [ ] ply_loader.cc - PLY加载实现
-  - [ ] device_buffer.h - CUDA设备内存RAII封装
-  - [ ] cuda_utils.h - CUDA错误检查，计时器
-  - [ ] renderer.h - 渲染器接口
-  - [ ] cuda_renderer.cuh - CUDA钴函数声明，数据结构
-  - [ ] cuda_renderer.cu - 所有CUDA渲染流水线
-- [ ] **app/ 前端应用（GLFW + OpenGL**
-  - [ ] main.cc - 主程序入口
-  - [ ] camera_controller.h - 相机交互控制（处理用户输入）
-  - [ ] camera_controller.cc - 交互实现
-  - [ ] glfw_window.h - GLFW窗口封装
-  - [ ] opengl_display.h - OpenGL显示输出
-- [ ] 完整功能实现
-  - [ ] 球谐函数评估
-  - [ ] 投影和椭圆参数计算
-  - [ ] tile列表构建
-  - [ ] 排序
-  - [ ] 计算tile范围
-  - [ ] 光栅化
-  - [ ] CUDA-OpenGL互操作显示
-  - [ ] 交互控制
+- [x] 创建目录结构
+- [x] 添加.clang-format（Google风格）
+- [x] 添加.gitignore
+- [x] CMake构建配置
+- [x] **core/ 核心算法**
+  - [x] consts.h - 常量定义
+  - [x] types.h - 基础类型定义
+  - [x] camera.h - 相机参数结构
+  - [x] camera.cpp - 相机参数计算
+  - [x] camera_controls.h - 相机交互控制
+  - [x] camera_controls.cpp - 交互实现
+  - [x] gaussian_model.h - 高斯模型数据结构
+  - [x] gaussian_model.cpp - 数据预处理（SH重排，量化）
+  - [x] device_buffer.h - CUDA设备内存RAII封装
+  - [x] device_buffer.cu - CUDA设备内存实现
+  - [x] cuda_error_check.h - CUDA错误检查
+  - [x] cuda_error_check.cpp - CUDA错误检查实现
+  - [x] utilities.h - OpenGL/CUDA互操作工具
+  - [x] ply_parser.h - PLY文件加载器
+  - [x] ply_parser.cpp - PLY加载实现
+  - [x] renderer.h - 渲染器接口
+  - [x] gaussian_render.cuh - CUDA核函数声明，数据结构
+  - [x] gaussian_render.cu - 所有CUDA渲染流水线
+- [x] **app/ 前端应用（GLFW + OpenGL**
+  - [x] main.cpp - 主程序入口
+  - [x] camera_controller.h - 相机交互控制器
+  - [x] camera_controller.cpp - 控制器实现
+  - [x] glfw_window.h - GLFW窗口封装
+  - [x] glfw_window.cpp - 窗口实现
+  - [x] opengl_display.h - OpenGL显示输出
+  - [x] opengl_display.cpp - 显示实现
+  - [x] perf_overlay.h - 性能overlay显示
+  - [x] perf_overlay.cpp - 性能overlay实现
+- [x] 完整功能实现
+  - [x] 球谐函数评估
+  - [x] 投影和椭圆参数计算
+  - [x] tile列表构建
+  - [x] 排序
+  - [x] 计算tile范围
+  - [x] 光栅化
+  - [x] CUDA-OpenGL互操作显示
+  - [x] 交互控制
 
 ---
 
@@ -594,6 +595,17 @@ output[pixel] = color * 255.0f;
 | 150K | ≥ 60 FPS |
 | 350K | ≥ 30 FPS |
 | 800K | ≥ 20 FPS |
+
+---
+
+## 当前实现状态
+
+✅ **项目已完整实现并可运行**
+- 成功编译
+- 成功加载PLY文件（random_cube.ply）
+- 成功运行渲染
+- 支持鼠标键盘相机控制
+- CUDA-OpenGL互工作正常
 
 ---
 
