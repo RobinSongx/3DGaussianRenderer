@@ -6,6 +6,10 @@
 
 namespace gauss_render {
 
+// 从PLY文件加载高斯模型
+// path: PLY文件路径
+// model: 输出模型数据
+// 返回值: 高斯数量
 int LoadPly(const std::string& path, GaussianModel& model);
 
 } // namespace gauss_render
